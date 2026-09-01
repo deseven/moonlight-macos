@@ -23,6 +23,7 @@
     OSView* _renderView;
     id<ConnectionCallbacks> _callbacks;
     Connection* _connection;
+    BOOL _terminated;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(OSView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
@@ -102,6 +103,11 @@
 
 - (void) stopStream
 {
+    if (_terminated) {
+        return;
+    }
+    _terminated = YES;
+
     [_connection terminate];
     _callbacks = nil;
 }

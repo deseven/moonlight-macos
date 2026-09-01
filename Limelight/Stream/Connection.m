@@ -27,6 +27,13 @@
     char _hostString[256];
     char _appVersionString[32];
     char _gfeVersionString[32];
+
+    // Instance copies of the renderer/callbacks passed in at init time.
+    // The static globals (renderer/_callbacks) used by the Limelight
+    // callbacks are only assigned from these inside main() while holding
+    // initLock, to avoid clobbering a still-running previous connection.
+    VideoDecoderRenderer* _renderer;
+    id<ConnectionCallbacks> _callbacksInstance;
 }
 
 static NSLock* initLock;
@@ -386,8 +393,14 @@ void ClConnectionStatusUpdate(int status)
         _serverInfo.serverInfoGfeVersion = _gfeVersionString;
     }
 
-    renderer = myRenderer;
-    _callbacks = callbacks;
+    _renderer = myRenderer;
+    _callbacksInstance = callbacks;
+
+    // NOTE: The static renderer/_callbacks are intentionally NOT set here.
+    // They must only be assigned inside main() after acquiring initLock,
+    // because a previous connection may still be running (with its own
+    // threads using these globals) when a new Connection object is created.
+    // See main() below.
 
     LiInitializeStreamConfiguration(&_streamConfig);
     _streamConfig.width = config.width;
@@ -499,6 +512,14 @@ static void FillOutputBuffer(void *aqData,
 -(void) main
 {
     [initLock lock];
+
+    // Assign the static renderer/_callbacks only now, while holding
+    // initLock. If a previous connection is still active, LiStopConnection()
+    // (invoked via terminate) will have already joined its threads before
+    // we get here, so it is safe to overwrite these globals.
+    renderer = _renderer;
+    _callbacks = _callbacksInstance;
+
     LiStartConnection(&_serverInfo,
                       &_streamConfig,
                       &_clCallbacks,

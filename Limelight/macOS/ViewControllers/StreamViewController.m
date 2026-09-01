@@ -29,6 +29,8 @@
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #import <Carbon/Carbon.h>
 
+static __weak StreamViewController *sActiveStreamViewController;
+
 @interface StreamViewController () <ConnectionCallbacks, KeyboardNotifiableDelegate, InputPresenceDelegate>
 
 @property (nonatomic, strong) ControllerSupport *controllerSupport;
@@ -44,6 +46,9 @@
 @property (nonatomic) int cursorHiddenCounter;
 
 @property (nonatomic) IOPMAssertionID powerAssertionID;
+
+@property (nonatomic, copy) void (^streamTerminationComletion)(void);
+@property (nonatomic) BOOL terminationComletionCalled;
 
 @end
 
@@ -110,11 +115,15 @@
     
     self.windowWillCloseNotification = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         if ([weakSelf isOurWindowTheWindowInNotiifcation:note]) {
+            if (sActiveStreamViewController == weakSelf) {
+                sActiveStreamViewController = nil;
+            }
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 if (weakSelf.useSystemControllerDriver) {
                     [weakSelf.controllerSupport cleanup];
                 }
                 [weakSelf.streamMan stopStream];
+                [weakSelf callStreamTerminationComletionIfNeeded];
             });
         }
     }];
@@ -138,6 +147,10 @@
 }
 
 - (void)dealloc {
+    if (sActiveStreamViewController == self) {
+        sActiveStreamViewController = nil;
+    }
+
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidExitFullScreenNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidEnterFullScreenNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidResignKeyNotification];
@@ -430,6 +443,10 @@
         [self uncaptureMouse];
 
         [self.delegate appDidQuit:self.app];
+        if (sActiveStreamViewController == self) {
+            sActiveStreamViewController = nil;
+        }
+        [self callStreamTerminationComletionIfNeeded];
         if (message != nil) {
             [AlertPresenter displayAlert:NSAlertStyleWarning title:@"Connection Failed" message:message window:self.view.window completionHandler:^(NSModalResponse returnCode) {
                 [self.view.window close];
@@ -446,6 +463,36 @@
 
 
 #pragma mark - Streaming Operations
+
++ (StreamViewController *)activeStreamViewController {
+    return sActiveStreamViewController;
+}
+
+- (void)focusStreamWindow {
+    [self.view.window makeKeyAndOrderFront:nil];
+    if (@available(macOS 14.0, *)) {
+        [NSApp activate];
+    } else {
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+}
+
+- (void)stopStreamAndCloseWithCompletion:(void (^)(void))completion {
+    self.streamTerminationComletion = completion;
+    self.terminationComletionCalled = NO;
+
+    // Terminate the connection right away (rather than waiting for the
+    // windowWillClose delay) so the old stream is torn down immediately.
+    [self.streamMan stopStream];
+    [self.view.window close];
+}
+
+- (void)callStreamTerminationComletionIfNeeded {
+    if (self.streamTerminationComletion != nil && !self.terminationComletionCalled) {
+        self.terminationComletionCalled = YES;
+        self.streamTerminationComletion();
+    }
+}
 
 - (void)prepareForStreaming {
     StreamConfiguration *streamConfig = [[StreamConfiguration alloc] init];
@@ -483,6 +530,8 @@
     self.streamMan = [[StreamManager alloc] initWithConfig:streamConfig renderView:self.view connectionCallbacks:self];
     NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
     [opQueue addOperation:self.streamMan];
+
+    sActiveStreamViewController = self;
 }
 
 

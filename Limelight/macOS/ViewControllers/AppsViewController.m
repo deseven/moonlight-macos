@@ -323,6 +323,40 @@ const CGFloat scaleBase = 1.125;
 #pragma mark - AppsViewControllerDelegate
 
 - (void)openApp:(TemporaryApp *)app {
+    StreamViewController *activeStreamVC = [StreamViewController activeStreamViewController];
+    if (activeStreamVC != nil) {
+        // There's already a local stream running. Only one stream is supported
+        // at a time, so either bring the existing stream back into focus or
+        // tear it down before starting the new one.
+
+        BOOL sameApp = [activeStreamVC.app.id isEqualToString:app.id]
+                        && [activeStreamVC.app.host.uuid isEqualToString:app.host.uuid];
+        if (sameApp) {
+            // Case 1: Launching the same app on the same host - just return
+            // the existing stream into focus instead of starting a new
+            // connection (which would crash the app).
+            self.runningApp = app;
+            [activeStreamVC focusStreamWindow];
+            return;
+        }
+
+        // Case 2: Launching a different app (or a different host) - kill the
+        // current stream first, then start the new one.
+        if ([self askWhetherToStopRunningApp:activeStreamVC.app andStartNewApp:app]) {
+            [activeStreamVC stopStreamAndCloseWithCompletion:^{
+                // The old stream is now fully torn down locally, so it's safe
+                // to quit the running app on the server and start the new one.
+                [self quitApp:activeStreamVC.app completion:^(BOOL success) {
+                    if (success) {
+                        self.runningApp = app;
+                        [self performSegueWithIdentifier:@"streamSegue" sender:nil];
+                    }
+                }];
+            }];
+        }
+        return;
+    }
+
     if (self.runningApp != nil && app != self.runningApp) {
         if ([self askWhetherToStopRunningApp:self.runningApp andStartNewApp:app]) {
             [self quitApp:self.runningApp completion:^(BOOL success) {
