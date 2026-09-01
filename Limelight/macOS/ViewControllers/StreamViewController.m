@@ -43,6 +43,7 @@ static __weak StreamViewController *sActiveStreamViewController;
 @property (nonatomic, strong) id windowDidResignKeyNotification;
 @property (nonatomic, strong) id windowDidBecomeKeyNotification;
 @property (nonatomic, strong) id windowWillCloseNotification;
+@property (nonatomic, strong) id appDidResignActiveNotification;
 @property (nonatomic) int cursorHiddenCounter;
 
 @property (nonatomic) IOPMAssertionID powerAssertionID;
@@ -93,9 +94,22 @@ static __weak StreamViewController *sActiveStreamViewController;
     
     self.windowDidResignKeyNotification = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidResignKeyNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
         if ([weakSelf isOurWindowTheWindowInNotiifcation:note]) {
+            // Release any keys that are still held down. macOS may not deliver
+            // the corresponding key-up/flagsChanged events to us after focus
+            // loss (e.g. when a global shortcut steals focus), which would
+            // otherwise leave keys stuck on the host.
+            [weakSelf.hidSupport releaseAllKeys];
+            
             if (![weakSelf isWindowInCurrentSpace] || ![weakSelf isWindowFullscreen]) {
                 [weakSelf uncaptureMouse];
             }
+        }
+    }];
+    self.appDidResignActiveNotification = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidResignActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        if (weakSelf == sActiveStreamViewController) {
+            // The app as a whole lost focus. Release any stuck keys, just in
+            // case the window resign-key notification was not delivered.
+            [weakSelf.hidSupport releaseAllKeys];
         }
     }];
     self.windowDidBecomeKeyNotification = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
@@ -156,6 +170,7 @@ static __weak StreamViewController *sActiveStreamViewController;
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidResignKeyNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidBecomeKeyNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowWillCloseNotification];
+    [[NSNotificationCenter defaultCenter] removeObserver:self.appDidResignActiveNotification];
 
     [self.hidSupport tearDownHidManager];
     self.hidSupport = nil;
@@ -368,6 +383,11 @@ static __weak StreamViewController *sActiveStreamViewController;
 }
 
 - (void)uncaptureMouse {
+    // Release any keys that are still held down. Input events are about to be
+    // gated off, so any subsequent key-up events we might receive would be
+    // dropped and leave keys stuck on the host.
+    [self.hidSupport releaseAllKeys];
+    
     CGAssociateMouseAndMouseCursorPosition(YES);
     if (self.cursorHiddenCounter != 0) {
         [NSCursor unhide];

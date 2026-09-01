@@ -20,6 +20,7 @@
 - (void)keyUp:(NSEvent *)event;
 
 - (void)releaseAllModifierKeys;
+- (void)releaseAllKeys;
 
 - (void)mouseDown:(NSEvent *)event withButton:(int)button;
 - (void)mouseUp:(NSEvent *)event withButton:(int)button;

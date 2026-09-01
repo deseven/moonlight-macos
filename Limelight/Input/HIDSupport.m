@@ -437,6 +437,8 @@ typedef enum {
 @property (nonatomic) id mouseDisconnectObserver;
 
 @property (nonatomic) BOOL useGCMouse;
+
+@property (nonatomic, strong) NSMutableSet<NSNumber *> *pressedKeys;
 @end
 
 @implementation HIDSupport
@@ -447,6 +449,7 @@ SwitchCommonOutputPacket_t switchRumblePacket;
     self = [super init];
     if (self) {
         self.host = host;
+        self.pressedKeys = [NSMutableSet set];
         
         [self setupHidManager];
         
@@ -603,55 +606,94 @@ static CVReturn displayLinkOutputCallback(CVDisplayLinkRef displayLink,
 }
 
 - (int)sendKeyboardModifierEvent:(NSEvent *)event withKeyCode:(unsigned short)keyCode andModifierFlag:(NSEventModifierFlags)modifierFlag {
-    return LiSendKeyboardEvent(keyCode, event.modifierFlags & modifierFlag ? KEY_ACTION_DOWN : KEY_ACTION_UP, [self translateKeyModifierWithEvent:event]);
+    BOOL isDown = (event.modifierFlags & modifierFlag) != 0;
+    
+    if (isDown) {
+        // Only send key-downs while input is enabled. If we don't send the press,
+        // we must not track it either, otherwise the release would be sent to the
+        // host for a key it never saw being pressed.
+        if (!self.shouldSendInputEvents) {
+            return 0;
+        }
+        [self.pressedKeys addObject:@(keyCode)];
+    } else {
+        // Releases are sent even when input is disabled, but only for keys that
+        // we actually pressed. This ensures keys aren't left stuck on the host
+        // when the stream window loses focus mid-press.
+        if (![self.pressedKeys containsObject:@(keyCode)]) {
+            return 0;
+        }
+        [self.pressedKeys removeObject:@(keyCode)];
+    }
+    
+    return LiSendKeyboardEvent(keyCode, isDown ? KEY_ACTION_DOWN : KEY_ACTION_UP, [self translateKeyModifierWithEvent:event]);
 }
 
 - (void)flagsChanged:(NSEvent *)event {
-    if (self.shouldSendInputEvents) {
-        switch (event.keyCode) {
-            case kVK_Shift:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA0 andModifierFlag:NSEventModifierFlagShift];
-                break;
-            case kVK_RightShift:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA1 andModifierFlag:NSEventModifierFlagShift];
-                break;
-                
-            case kVK_Control:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA2 andModifierFlag:NSEventModifierFlagControl];
-                break;
-            case kVK_RightControl:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA3 andModifierFlag:NSEventModifierFlagControl];
-                break;
-                
-            case kVK_Option:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA4 andModifierFlag:NSEventModifierFlagOption];
-                break;
-            case kVK_RightOption:
-                [self sendKeyboardModifierEvent:event withKeyCode:0xA5 andModifierFlag:NSEventModifierFlagOption];
-                break;
-                
-            case kVK_Command:
-                [self sendKeyboardModifierEvent:event withKeyCode:0x5B andModifierFlag:NSEventModifierFlagCommand];
-                break;
-            case kVK_RightCommand:
-                [self sendKeyboardModifierEvent:event withKeyCode:0x5C andModifierFlag:NSEventModifierFlagCommand];
-                break;
-                
-            default:
-                break;
-        }
+    unsigned short keyCode;
+    NSEventModifierFlags modifierFlag;
+    
+    switch (event.keyCode) {
+        case kVK_Shift:
+            keyCode = 0xA0;
+            modifierFlag = NSEventModifierFlagShift;
+            break;
+        case kVK_RightShift:
+            keyCode = 0xA1;
+            modifierFlag = NSEventModifierFlagShift;
+            break;
+            
+        case kVK_Control:
+            keyCode = 0xA2;
+            modifierFlag = NSEventModifierFlagControl;
+            break;
+        case kVK_RightControl:
+            keyCode = 0xA3;
+            modifierFlag = NSEventModifierFlagControl;
+            break;
+            
+        case kVK_Option:
+            keyCode = 0xA4;
+            modifierFlag = NSEventModifierFlagOption;
+            break;
+        case kVK_RightOption:
+            keyCode = 0xA5;
+            modifierFlag = NSEventModifierFlagOption;
+            break;
+            
+        case kVK_Command:
+            keyCode = 0x5B;
+            modifierFlag = NSEventModifierFlagCommand;
+            break;
+        case kVK_RightCommand:
+            keyCode = 0x5C;
+            modifierFlag = NSEventModifierFlagCommand;
+            break;
+            
+        default:
+            return;
     }
+    
+    [self sendKeyboardModifierEvent:event withKeyCode:keyCode andModifierFlag:modifierFlag];
 }
 
 - (void)keyDown:(NSEvent *)event {
     if (self.shouldSendInputEvents) {
-        LiSendKeyboardEvent(0x8000 | [self translateKeyCodeWithEvent:event], KEY_ACTION_DOWN, [self translateKeyModifierWithEvent:event]);
+        short keyCode = 0x8000 | [self translateKeyCodeWithEvent:event];
+        [self.pressedKeys addObject:@(keyCode)];
+        LiSendKeyboardEvent(keyCode, KEY_ACTION_DOWN, [self translateKeyModifierWithEvent:event]);
     }
 }
 
 - (void)keyUp:(NSEvent *)event {
-    if (self.shouldSendInputEvents) {
-        LiSendKeyboardEvent(0x8000 | [self translateKeyCodeWithEvent:event], KEY_ACTION_UP, [self translateKeyModifierWithEvent:event]);
+    short keyCode = 0x8000 | [self translateKeyCodeWithEvent:event];
+    
+    // Releases are sent even when input is disabled, but only for keys that
+    // we actually pressed. This ensures keys aren't left stuck on the host
+    // when the stream window loses focus mid-press.
+    if ([self.pressedKeys containsObject:@(keyCode)]) {
+        [self.pressedKeys removeObject:@(keyCode)];
+        LiSendKeyboardEvent(keyCode, KEY_ACTION_UP, [self translateKeyModifierWithEvent:event]);
     }
 }
 
@@ -664,6 +706,19 @@ static CVReturn displayLinkOutputCallback(CVDisplayLinkRef displayLink,
     LiSendKeyboardEvent(0xA3, KEY_ACTION_UP, 0);
     LiSendKeyboardEvent(0xA4, KEY_ACTION_UP, 0);
     LiSendKeyboardEvent(0xA5, KEY_ACTION_UP, 0);
+}
+
+- (void)releaseAllKeys {
+    // Release every key we know is currently pressed.
+    for (NSNumber *keyCode in self.pressedKeys) {
+        LiSendKeyboardEvent(keyCode.shortValue, KEY_ACTION_UP, 0);
+    }
+    [self.pressedKeys removeAllObjects];
+    
+    // Also release the modifier keys unconditionally as a safety net for keys
+    // that may have been pressed before tracking was active. Duplicate key-up
+    // events are harmless.
+    [self releaseAllModifierKeys];
 }
 
 - (void)mouseDown:(NSEvent *)event withButton:(int)button {
