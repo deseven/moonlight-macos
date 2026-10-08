@@ -12,6 +12,8 @@
 @interface StreamViewMac : NSView
 @property (nonatomic, strong) NSString *statusText;
 @property (nonatomic, strong) NSString *appName;
+// Text shown in a translucent box in the top-left corner of the stream. nil hides it.
+@property (nonatomic, copy) NSString *overlayText;
 @property (nonatomic, weak) id<KeyboardNotifiableDelegate> keyboardNotifiable;
 
 @end

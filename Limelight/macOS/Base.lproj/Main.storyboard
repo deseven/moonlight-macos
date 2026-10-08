@@ -361,6 +361,12 @@ DQ
                                                 <action selector="toggleFullScreen:" target="Ady-hI-5gd" id="dU3-MA-1Rq"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem title="Stream Statistics" keyEquivalent="E" id="Sts-Ov-Tgl">
+                                            <modifierMask key="keyEquivalentModifierMask" control="YES"/>
+                                            <connections>
+                                                <action selector="toggleStatsOverlay:" target="Ady-hI-5gd" id="Sts-Ov-Act"/>
+                                            </connections>
+                                        </menuItem>
                                     </items>
                                 </menu>
                             </menuItem>

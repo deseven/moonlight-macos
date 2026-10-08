@@ -14,6 +14,7 @@
 #import <AudioUnit/AudioUnit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <VideoToolbox/VideoToolbox.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include "Limelight.h"
 #include "opus_multistream.h"
@@ -39,6 +40,15 @@
 static NSLock* initLock;
 static OpusMSDecoder* opusDecoder;
 static id<ConnectionCallbacks> _callbacks;
+static int lastFrameNumber;
+static int activeVideoFormat;
+static video_stats_t currentVideoStats;
+static video_stats_t lastVideoStats;
+static NSLock* videoStatsLock;
+
+#define DROPPED_FRAMES_HISTORY_WINDOWS 10
+static int droppedFramesHistory[DROPPED_FRAMES_HISTORY_WINDOWS];
+static int droppedFramesHistoryIndex;
 
 #define OUTPUT_BUS 0
 
@@ -67,6 +77,14 @@ static VideoDecoderRenderer* renderer;
 int DrDecoderSetup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags)
 {
     [renderer setupWithVideoFormat:videoFormat frameRate:redrawRate];
+    lastFrameNumber = 0;
+    activeVideoFormat = videoFormat;
+    [videoStatsLock lock];
+    memset(&currentVideoStats, 0, sizeof(currentVideoStats));
+    memset(&lastVideoStats, 0, sizeof(lastVideoStats));
+    [videoStatsLock unlock];
+    memset(droppedFramesHistory, 0, sizeof(droppedFramesHistory));
+    droppedFramesHistoryIndex = 0;
     return 0;
 }
 
@@ -83,6 +101,37 @@ void DrStop(void)
     renderer = nil;
 }
 
+-(BOOL) getVideoStats:(video_stats_t*)stats
+{
+    // We return lastVideoStats because it is a complete 1 second window
+    [videoStatsLock lock];
+    if (lastVideoStats.endTime != 0) {
+        memcpy(stats, &lastVideoStats, sizeof(*stats));
+        [videoStatsLock unlock];
+        return YES;
+    }
+
+    // No stats yet
+    [videoStatsLock unlock];
+    return NO;
+}
+
+-(NSString*) getActiveCodecName
+{
+    if (activeVideoFormat & VIDEO_FORMAT_MASK_H264) {
+        return @"H.264";
+    }
+    else if (activeVideoFormat & VIDEO_FORMAT_MASK_10BIT) {
+        return LiGetCurrentHostDisplayHdrMode() ? @"HEVC Main 10 HDR" : @"HEVC Main 10 SDR";
+    }
+    else if (activeVideoFormat & VIDEO_FORMAT_MASK_H265) {
+        return @"HEVC";
+    }
+    else {
+        return @"UNKNOWN";
+    }
+}
+
 int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit)
 {
     int offset = 0;
@@ -92,6 +141,53 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit)
         // A frame was lost due to OOM condition
         return DR_NEED_IDR;
     }
+
+    CFTimeInterval now = CACurrentMediaTime();
+    if (!lastFrameNumber) {
+        currentVideoStats.startTime = now;
+        lastFrameNumber = decodeUnit->frameNumber;
+    }
+    else {
+        // Flip stats roughly every second
+        if (now - currentVideoStats.startTime >= 1.0f) {
+            currentVideoStats.endTime = now;
+
+            droppedFramesHistory[droppedFramesHistoryIndex] = currentVideoStats.networkDroppedFrames;
+            droppedFramesHistoryIndex = (droppedFramesHistoryIndex + 1) % DROPPED_FRAMES_HISTORY_WINDOWS;
+            currentVideoStats.recentNetworkDroppedFrames = 0;
+            for (int i = 0; i < DROPPED_FRAMES_HISTORY_WINDOWS; i++) {
+                currentVideoStats.recentNetworkDroppedFrames += droppedFramesHistory[i];
+            }
+
+            [videoStatsLock lock];
+            lastVideoStats = currentVideoStats;
+            [videoStatsLock unlock];
+
+            memset(&currentVideoStats, 0, sizeof(currentVideoStats));
+            currentVideoStats.startTime = now;
+        }
+
+        // Any frame number greater than lastFrameNumber + 1 represents a dropped frame
+        currentVideoStats.networkDroppedFrames += decodeUnit->frameNumber - (lastFrameNumber + 1);
+        currentVideoStats.totalFrames += decodeUnit->frameNumber - (lastFrameNumber + 1);
+        lastFrameNumber = decodeUnit->frameNumber;
+    }
+
+    if (decodeUnit->frameHostProcessingLatency != 0) {
+        if (currentVideoStats.minHostProcessingLatency == 0 || decodeUnit->frameHostProcessingLatency < currentVideoStats.minHostProcessingLatency) {
+            currentVideoStats.minHostProcessingLatency = decodeUnit->frameHostProcessingLatency;
+        }
+
+        if (decodeUnit->frameHostProcessingLatency > currentVideoStats.maxHostProcessingLatency) {
+            currentVideoStats.maxHostProcessingLatency = decodeUnit->frameHostProcessingLatency;
+        }
+
+        currentVideoStats.framesWithHostProcessingLatency++;
+        currentVideoStats.totalHostProcessingLatency += decodeUnit->frameHostProcessingLatency;
+    }
+
+    currentVideoStats.receivedFrames++;
+    currentVideoStats.totalFrames++;
 
     PLENTRY entry = decodeUnit->bufferList;
     while (entry != NULL) {
@@ -369,6 +465,9 @@ void ClConnectionStatusUpdate(int status)
     // or deinitializing a connection at a time.
     if (initLock == nil) {
         initLock = [[NSLock alloc] init];
+    }
+    if (videoStatsLock == nil) {
+        videoStatsLock = [[NSLock alloc] init];
     }
     
     hostAddress = config.host;

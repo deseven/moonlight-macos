@@ -31,12 +31,16 @@
 
 static __weak StreamViewController *sActiveStreamViewController;
 
-@interface StreamViewController () <ConnectionCallbacks, KeyboardNotifiableDelegate, InputPresenceDelegate>
+static NSString * const kStatsOverlayDefaultsKey = @"statsOverlay";
+
+@interface StreamViewController () <ConnectionCallbacks, KeyboardNotifiableDelegate, InputPresenceDelegate, NSMenuItemValidation>
 
 @property (nonatomic, strong) ControllerSupport *controllerSupport;
 @property (nonatomic, strong) HIDSupport *hidSupport;
 @property (nonatomic) BOOL useSystemControllerDriver;
 @property (nonatomic, strong) StreamManager *streamMan;
+@property (nonatomic, strong) StreamConfiguration *streamConfig;
+@property (nonatomic, strong) NSTimer *statsUpdateTimer;
 @property (nonatomic, readonly) StreamViewMac *streamView;
 @property (nonatomic, strong) id windowDidExitFullScreenNotification;
 @property (nonatomic, strong) id windowDidEnterFullScreenNotification;
@@ -132,6 +136,7 @@ static __weak StreamViewController *sActiveStreamViewController;
             if (sActiveStreamViewController == weakSelf) {
                 sActiveStreamViewController = nil;
             }
+            [weakSelf stopStatsUpdateTimer];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 if (weakSelf.useSystemControllerDriver) {
                     [weakSelf.controllerSupport cleanup];
@@ -171,6 +176,8 @@ static __weak StreamViewController *sActiveStreamViewController;
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowDidBecomeKeyNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.windowWillCloseNotification];
     [[NSNotificationCenter defaultCenter] removeObserver:self.appDidResignActiveNotification];
+
+    [self.statsUpdateTimer invalidate];
 
     [self.hidSupport tearDownHidManager];
     self.hidSupport = nil;
@@ -298,6 +305,12 @@ static __weak StreamViewController *sActiveStreamViewController;
         return NO;
     }
     
+    // Let the menu handle the stats overlay toggle. The modifiers aren't released
+    // here since we stay in the stream; their key-ups reach the host as usual.
+    if (event.keyCode == kVK_ANSI_E && eventModifierFlags == (NSEventModifierFlagShift | NSEventModifierFlagControl)) {
+        return NO;
+    }
+    
     [self.hidSupport keyDown:event];
     [self.hidSupport keyUp:event];
     
@@ -349,6 +362,50 @@ static __weak StreamViewController *sActiveStreamViewController;
     CGFloat width = (CGFloat)[self.class getResolution].width / screenScale;
     CGFloat height = (CGFloat)[self.class getResolution].height / screenScale;
     [self.view.window setContentSize:NSMakeSize(width, height)];
+}
+
+- (IBAction)toggleStatsOverlay:(id)sender {
+    BOOL enabled = ![[NSUserDefaults standardUserDefaults] boolForKey:kStatsOverlayDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kStatsOverlayDefaultsKey];
+    
+    if (enabled) {
+        [self startStatsUpdateTimer];
+    } else {
+        [self stopStatsUpdateTimer];
+        self.streamView.overlayText = nil;
+    }
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem.action == @selector(toggleStatsOverlay:)) {
+        menuItem.state = [[NSUserDefaults standardUserDefaults] boolForKey:kStatsOverlayDefaultsKey] ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    return YES;
+}
+
+
+#pragma mark - Stats Overlay
+
+- (void)startStatsUpdateTimer {
+    if (self.statsUpdateTimer != nil) {
+        return;
+    }
+    
+    __weak typeof(self) weakSelf = self;
+    self.statsUpdateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+        [weakSelf updateStatsOverlay];
+    }];
+    [self updateStatsOverlay];
+}
+
+- (void)stopStatsUpdateTimer {
+    [self.statsUpdateTimer invalidate];
+    self.statsUpdateTimer = nil;
+}
+
+- (void)updateStatsOverlay {
+    // Stays hidden until the first full 1-second stats window is available
+    self.streamView.overlayText = [self.streamMan getStatsOverlayText];
 }
 
 
@@ -460,6 +517,7 @@ static __weak StreamViewController *sActiveStreamViewController;
     [self.hidSupport releaseAllModifierKeys];
     
     dispatch_async(dispatch_get_main_queue(), ^{
+        [self stopStatsUpdateTimer];
         [self uncaptureMouse];
 
         [self.delegate appDidQuit:self.app];
@@ -547,6 +605,7 @@ static __weak StreamViewController *sActiveStreamViewController;
     }
     self.hidSupport = [[HIDSupport alloc] init:self.app.host];
     
+    self.streamConfig = streamConfig;
     self.streamMan = [[StreamManager alloc] initWithConfig:streamConfig renderView:self.view connectionCallbacks:self];
     NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
     [opQueue addOperation:self.streamMan];
@@ -587,6 +646,10 @@ static __weak StreamViewController *sActiveStreamViewController;
     dispatch_async(dispatch_get_main_queue(), ^{
         self.streamView.statusText = nil;
         
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:kStatsOverlayDefaultsKey]) {
+            [self startStatsUpdateTimer];
+        }
+        
         if ([SettingsClass autoFullscreenFor:self.app.host.uuid]) {
             if (!(self.view.window.styleMask & NSWindowStyleMaskFullScreen)) {
                 [self.view.window toggleFullScreen:self];
@@ -624,6 +687,29 @@ static __weak StreamViewController *sActiveStreamViewController;
 }
 
 - (void)connectionStatusUpdate:(int)status {
+    Log(LOG_W, @"Connection status update: %d", status);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // The stats overlay takes precedence over these warnings
+        if (self.statsUpdateTimer != nil) {
+            return;
+        }
+
+        switch (status) {
+            case CONN_STATUS_OKAY:
+                self.streamView.overlayText = nil;
+                break;
+
+            case CONN_STATUS_POOR:
+                if (self.streamConfig.bitRate > 5000) {
+                    self.streamView.overlayText = @"Slow connection to PC\nReduce your bitrate";
+                }
+                else {
+                    self.streamView.overlayText = @"Poor connection to PC";
+                }
+                break;
+        }
+    });
 }
 
 
