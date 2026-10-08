@@ -421,9 +421,9 @@ DQ
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Help" systemMenu="help" id="F2S-fz-NVQ">
                                     <items>
-                                        <menuItem title="Moonlight+ Help" keyEquivalent="?" id="FKE-Sm-Kum">
+                                        <menuItem title="Keyboard Shortcuts" keyEquivalent="?" id="FKE-Sm-Kum">
                                             <connections>
-                                                <action selector="showHelp:" target="Ady-hI-5gd" id="y7X-2Q-9no"/>
+                                                <action selector="showKeyboardShortcuts:" target="Ady-hI-5gd" id="y7X-2Q-9no"/>
                                             </connections>
                                         </menuItem>
                                     </items>
@@ -496,12 +496,26 @@ DQ
                                         <action selector="showPreferences:" target="Oky-zY-oP4" id="EqS-rJ-Y5o"/>
                                     </connections>
                                 </toolbarItem>
+                                <toolbarItem implicitItemIdentifier="6B1F2C3A-5D4E-4F70-9A81-0C2D3E4F5A6B" explicitItemIdentifier="KeyboardShortcutsToolbarItem" label="Keyboard Shortcuts" paletteLabel="Keyboard Shortcuts" toolTip="Keyboard Shortcuts" image="questionmark.circle" catalog="system" sizingBehavior="auto" id="Ksh-Tb-Itm">
+                                    <button key="view" verticalHuggingPriority="750" id="Ksh-Btn-Vw1">
+                                        <rect key="frame" x="13" y="14" width="29" height="23"/>
+                                        <autoresizingMask key="autoresizingMask"/>
+                                        <buttonCell key="cell" type="roundTextured" bezelStyle="texturedRounded" image="questionmark.circle" catalog="system" imagePosition="only" alignment="center" controlSize="large" lineBreakMode="truncatingTail" state="on" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="Ksh-Btn-Cel">
+                                            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                                            <font key="font" metaFont="system"/>
+                                        </buttonCell>
+                                    </button>
+                                    <connections>
+                                        <action selector="showKeyboardShortcuts:" target="Oky-zY-oP4" id="Ksh-Tb-Act"/>
+                                    </connections>
+                                </toolbarItem>
                             </allowedToolbarItems>
                             <defaultToolbarItems>
                                 <toolbarItem reference="acz-Dh-U70"/>
                                 <toolbarItem reference="LpS-n7-CuI"/>
                                 <toolbarItem reference="DlI-3g-HXX"/>
                                 <toolbarItem reference="INJ-zl-Jmu"/>
+                                <toolbarItem reference="Ksh-Tb-Itm"/>
                             </defaultToolbarItems>
                         </toolbar>
                         <connections>
@@ -648,5 +662,6 @@ DQ
         <image name="NSAddTemplate" width="18" height="17"/>
         <image name="NSLeftFacingTriangleTemplate" width="12" height="17"/>
         <image name="gear" catalog="system" width="17" height="16"/>
+        <image name="questionmark.circle" catalog="system" width="15" height="15"/>
     </resources>
 </document>

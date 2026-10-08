@@ -44,6 +44,7 @@ Moonlight+ is a native macOS client for NVIDIA's GameStream. It allows you to st
 - To quit an app and disconnect from stream in one keystroke press `Control-Shift-W`.
 - To just disconnect from the stream (leaving the app running) press `Control-Option-W`.
 - To toggle the stream statistics overlay press `Control-Shift-E`.
+- To see all stream shortcuts at any time, click the `?` button in the toolbar or choose *Help → Keyboard Shortcuts* (`Command-?`).
 - To quit apps from the apps grid, right-click on the running app and choose *Quit.*
 - You can increase/decrease the app grid size with `Command +` and `Command -`.
 

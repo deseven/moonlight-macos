@@ -97,6 +97,10 @@ typedef enum : NSUInteger {
     [self.aboutWC.window makeKeyAndOrderFront:nil];
 }
 
+- (IBAction)showKeyboardShortcuts:(id)sender {
+    [KeyboardShortcutsPresenter show];
+}
+
 - (IBAction)filterList:(id)sender {
     NSWindow *window = NSApplication.sharedApplication.mainWindow;
     [window makeFirstResponder:[window moonlight_searchFieldInToolbar]];

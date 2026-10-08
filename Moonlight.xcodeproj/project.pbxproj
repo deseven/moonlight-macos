@@ -112,6 +112,7 @@
 				macOS/ViewControllers/GeneralPrefsPaneView.xib,
 				macOS/ViewControllers/HostCell.m,
 				macOS/ViewControllers/HostsViewController.m,
+				macOS/ViewControllers/KeyboardShortcutsView.swift,
 				macOS/ViewControllers/Settings.swift,
 				macOS/ViewControllers/SettingsHostingController.swift,
 				macOS/ViewControllers/SettingsModel.swift,

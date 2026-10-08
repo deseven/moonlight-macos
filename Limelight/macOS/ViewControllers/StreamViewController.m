@@ -305,6 +305,12 @@ static NSString * const kStatsOverlayDefaultsKey = @"statsOverlay";
         return NO;
     }
     
+    // Let the menu handle Help > Keyboard Shortcuts (Command-?).
+    if (event.keyCode == kVK_ANSI_Slash && eventModifierFlags == (NSEventModifierFlagShift | NSEventModifierFlagCommand)) {
+        [self.hidSupport releaseAllModifierKeys];
+        return NO;
+    }
+    
     // Let the menu handle the stats overlay toggle. The modifiers aren't released
     // here since we stay in the stream; their key-ups reach the host as usual.
     if (event.keyCode == kVK_ANSI_E && eventModifierFlags == (NSEventModifierFlagShift | NSEventModifierFlagControl)) {
