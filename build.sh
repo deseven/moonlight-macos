@@ -5,9 +5,11 @@
 # Usage:
 #   ./build.sh                 # debug build (default)
 #   ./build.sh dev             # debug build
-#   ./build.sh dev-release     # release build
+#   ./build.sh dev-release     # release build, installed to /Applications
 #
 # Outputs the .app bundle to the DerivedData products dir and prints its path.
+# In dev-release mode the bundle is also copied to /Applications, replacing
+# any existing Moonlight.app there.
 #
 # Requirements:
 #   - Xcode (full) installed with command line tools
@@ -113,7 +115,17 @@ APP_PATH=".build/DerivedData/Build/Products/$CONFIGURATION/Moonlight.app"
 if [[ -d "$APP_PATH" ]]; then
     echo
     echo "✅ Build complete: $APP_PATH"
-    echo "   Open with:  open \"$APP_PATH\""
+
+    if [[ "$MODE" == "dev-release" ]]; then
+        INSTALL_PATH="/Applications/Moonlight.app"
+        echo "==> Installing to $INSTALL_PATH"
+        rm -rf "$INSTALL_PATH"
+        ditto "$APP_PATH" "$INSTALL_PATH"
+        echo "✅ Installed: $INSTALL_PATH"
+        echo "   Open with:  open \"$INSTALL_PATH\""
+    else
+        echo "   Open with:  open \"$APP_PATH\""
+    fi
 else
     echo "Build finished but app bundle not found at expected path: $APP_PATH" >&2
     exit 1

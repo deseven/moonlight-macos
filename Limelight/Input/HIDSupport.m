@@ -765,10 +765,15 @@ static CVReturn displayLinkOutputCallback(CVDisplayLinkRef displayLink,
                 LiSendHighResScrollEvent(event.scrollingDeltaY);
             }
         } else {
+            // Classic wheels deliver one event per notch, but macOS applies scroll
+            // acceleration to the deltas: slow notches report fractional values
+            // (e.g. 0.1) that truncate to zero, while fast ones report many lines
+            // per notch. Send exactly one click per event and let the host apply
+            // its own wheel behavior.
             if (absDeltaX > absDeltaY) {
-                LiSendHScrollEvent(-event.scrollingDeltaX);
-            } else {
-                LiSendScrollEvent(event.scrollingDeltaY);
+                LiSendHScrollEvent(event.scrollingDeltaX > 0 ? -1 : 1);
+            } else if (absDeltaY > 0) {
+                LiSendScrollEvent(event.scrollingDeltaY > 0 ? 1 : -1);
             }
         }
     }
