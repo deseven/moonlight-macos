@@ -60,7 +60,7 @@
 - (void)viewWillAppear {
     [super viewWillAppear];
     
-    self.parentViewController.title = @"Moonlight";
+    self.parentViewController.title = @"Moonlight+";
     self.parentViewController.view.window.subtitle = [Helpers versionNumberString];
 
     [self.parentViewController.view.window moonlight_toolbarItemForAction:@selector(addHostButtonClicked:)].enabled = YES;
@@ -172,7 +172,7 @@
     
     alert.alertStyle = NSAlertStyleInformational;
     alert.messageText = @"Add Host Manually";
-    alert.informativeText = @"If Moonlight doesn't find your local gaming PC automatically,\nenter the IP address of your PC";
+    alert.informativeText = @"If Moonlight+ doesn't find your local gaming PC automatically,\nenter the IP address of your PC";
 
     NSTextField *inputField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
     inputField.identifier = @"addHostField";

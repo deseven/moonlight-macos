@@ -494,7 +494,7 @@ static NSString * const kStatsOverlayDefaultsKey = @"statsOverlay";
         return;
     }
     
-    CFStringRef reasonForActivity= CFSTR("Moonlight streaming");
+    CFStringRef reasonForActivity= CFSTR("Moonlight+ streaming");
     
     IOPMAssertionID assertionID;
     IOReturn success = IOPMAssertionCreateWithName(kIOPMAssertionTypeNoDisplaySleep, kIOPMAssertionLevelOn, reasonForActivity, &assertionID);

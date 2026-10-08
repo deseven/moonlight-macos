@@ -32,7 +32,7 @@
     self.appIconImageView.image = [NSApp applicationIconImage];
     self.versionNumberTextField.stringValue = [Helpers versionNumberString];
     self.copyrightTextField.stringValue = [Helpers copyrightString];
-    self.githubTextFieldLink.attributedStringValue = [self makeTextFieldLinkWithURLString:@"https://github.com/MichaelMKenny/moonlight-macos" :self.githubTextFieldLink];
+    self.githubTextFieldLink.attributedStringValue = [self makeTextFieldLinkWithURLString:@"https://github.com/deseven/moonlight-macos" :self.githubTextFieldLink];
     self.creditsTextFieldLink.attributedStringValue = [self makeTextFieldLinkWithURLString:@"https://github.com/moonlight-stream/moonlight-ios" :self.creditsTextFieldLink];
 }
 
