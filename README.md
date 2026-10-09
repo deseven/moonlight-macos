@@ -1,5 +1,8 @@
 # Moonlight+ for macOS
 
+> [!TIP]
+> Apparently all of that is no longer needed since we finally have a native macOS client - [Se7enbrc/glimmer](https://github.com/Se7enbrc/glimmer). Use it, it's good.
+
 > [!IMPORTANT]
 > This is a fork of [MichaelMKenny/moonlight-macos](https://github.com/MichaelMKenny/moonlight-macos) with the following changes:
 > - **Stream statistics overlay** (ported from moonlight-ios): video resolution, FPS and codec, frames dropped by the network, network latency and host processing latency. Toggle it with `Control-Shift-E` or *View → Stream Statistics*; the setting is remembered. Without the overlay, a warning is shown when the connection to the PC is poor.
